@@ -1,0 +1,62 @@
+
+import com.google.common.collect.ImmutableList;
+import com.hazelcast.client.HazelcastClient;
+import com.hazelcast.client.config.ClientConfig;
+import com.hazelcast.config.MapConfig;
+import com.hazelcast.config.MaxSizeConfig;
+import com.hazelcast.config.NetworkConfig;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.IMap;
+import com.hazelcast.map.eviction.LRUEvictionPolicy;
+
+import static com.hazelcast.config.MaxSizeConfig.MaxSizePolicy.USED_HEAP_PERCENTAGE;
+
+public class HazelcastClientApp {
+    public static void main(String[] args) throws InterruptedException {
+        ClientConfig clientConfig = new ClientConfig();
+        clientConfig.getNetworkConfig().setAddresses(ImmutableList.of("localhost:5701"));
+        clientConfig.getNetworkConfig().setConnectionAttemptLimit(10);
+
+        MapConfig mapConfig = new MapConfig("test-entry")
+                .setReadBackupData(true)
+                .setBackupCount(2)
+                .setTimeToLiveSeconds(1)
+                .setMaxIdleSeconds(5)
+                .setMapEvictionPolicy(new LRUEvictionPolicy())
+                .setMaxSizeConfig(new MaxSizeConfig()
+                        .setSize(5)
+                        .setMaxSizePolicy(USED_HEAP_PERCENTAGE));
+
+        HazelcastInstance hazelcastInstance = HazelcastClient.newHazelcastClient(clientConfig);
+        hazelcastInstance.getConfig()
+                .addMapConfig(mapConfig);
+
+        IMap<String, String> map = hazelcastInstance.getMap("test-entry");
+        if (map.isEmpty()) {
+            System.out.println("Map is empty");
+        }
+
+        System.out.println("Put VALUE1 in map by keys ID1, ID2, ID3");
+        map.put("ID1", "VALUE1");
+        map.put("ID2", "VALUE1");
+        map.put("ID3", "VALUE1");
+
+        while (map.get("ID1") != null) {
+            System.out.println("Waiting for eviction...");
+            Thread.sleep(6000);
+        }
+        System.out.println("Evicted VALUE1 from map for ID1, ID2, ID3 key");
+
+        System.out.println("[REQUIRED ACTION] Please down hazelcast");
+        Thread.sleep(10000);
+        System.out.println("[REQUIRED ACTION] Please up hazelcast");
+        Thread.sleep(20000);
+
+        System.out.println("Put another value VALUE2 with key ID2");
+        map.put("ID2", "VALUE2");
+        while (map.get("ID2") != null) {
+            System.out.println("This will never stops - value VALUE2 by key ID2 will be there forever and never be evicted");
+            Thread.sleep(6000);
+        }
+    }
+}
